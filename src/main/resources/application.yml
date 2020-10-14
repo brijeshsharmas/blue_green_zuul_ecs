@@ -1,0 +1,24 @@
+server:
+  port: 9090
+
+#Zuul Configuration
+zuul:
+  routes:
+    defaults: /**
+  ribbon:
+    eager-load:
+      enabled: true
+
+#Ribbon load balancer
+ribbon:
+  ServerListRefreshInterval: 15000
+  ConnectTimeout: 5000
+  ReadTimeout: 30000
+
+#Your application specific configuration
+ssm.wait.interval: 30000
+ssm.root.path: /bg/
+
+spring:
+  application:
+    name: Zuul-ECS-Blue-Green-Server

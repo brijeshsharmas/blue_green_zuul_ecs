@@ -1,0 +1,34 @@
+#Author @Brijesh Sharma
+#@author Brijesh Sharma
+#Copyright (c) 2020, Brijesh Sharma 
+#All rights reserved. 
+#This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree. 
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+    AWS CloudFormation template for create private dns name space for microservice registery
+ 
+#PARAMETERS SECTION BEGIN
+Parameters:
+    Name:
+        Type: "String"
+        AllowedPattern: "[a-zA-Z0-9-_]+"
+        Default: "blue-green-namespace"
+    VPCId:
+        Type: AWS::EC2::VPC::Id
+        Description: VPC id where private dns namespace to be created
+    
+#RESOURCES SECTION BEGIN
+Resources:
+   ServiceRegistryNameSpace:   
+      Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+      Properties: 
+        Description: "Private Namespace For Service Registry"
+        Name: !Ref Name
+        Vpc: !Ref VPCId
+     
+Outputs:
+   NamespaceId:
+      Description: Exported private dns namespace id
+      Value: !Ref ServiceRegistryNameSpace
+      Export:
+         Name: NameSpaceId
