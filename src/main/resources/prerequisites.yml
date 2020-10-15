@@ -1,0 +1,203 @@
+#Author @Brijesh Sharma
+#@author Brijesh Sharma
+#Copyright (c) 2020, Brijesh Sharma 
+#All rights reserved. 
+#This source code is licensed under the MIT license found in the LICENSE file in the root directory of this source tree. 
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  AWS CloudFormation template for create private dns name space for microservice registery
+ 
+#PARAMETERS SECTION BEGIN
+Parameters:
+  NamespaceName:
+    Type: "String"
+    AllowedPattern: "[a-zA-Z0-9-_]+"
+    Default: "blue-green-namespace"
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC id where private dns namespace to be created
+  SubnetA:
+    Type: AWS::EC2::Subnet::Id
+  SubnetB:
+    Type: AWS::EC2::Subnet::Id
+  ClusterName:
+    Type: "String"
+    AllowedPattern: "[a-zA-Z0-9-_]+"
+    Default: "blue-green-cluster"
+    Description: VPC id where private dns namespace to be created
+  ZuulPort:
+    Type: Number
+    Default: 8080
+    Description: Port number on which Zuul is listening
+    
+#RESOURCES SECTION BEGIN
+Resources:
+  ServiceRegistryNameSpace:   
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties: 
+      Description: "Private Namespace For Service Registry"
+      Name: !Ref NamespaceName
+      Vpc: !Ref VPCId
+     
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+       ClusterName: !Ref ClusterName
+         
+# A role needed by ECS to pull out container image and deploy
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-TaskExecutionRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+  # A role for the containers
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-TaskRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+      # Policies:
+      #   -
+  # A role needed for auto scaling
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ECS-TaskAutoscalingRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'         
+  
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load balancer security group
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  ZuulSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Zuul security group
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Service security group
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          SourceSecurityGroupId: !Ref ZuulSecurityGroup
+ 
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: Zuul-Target-Group
+      Port: !Ref ZuulPort
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60 # default is 300
+      TargetType: ip
+      VpcId: !Ref VPCId
+  ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        # this is the default, but is specified here in case it needs to be changed
+        - Key: idle_timeout.timeout_seconds
+          Value: 60
+      Name: Zuul-NLB
+      # "internal" is also an option
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: 
+        - !Ref SubnetA
+        - !Ref SubnetB
+
+Outputs:
+    NamespaceId:
+      Description: Exported private dns namespace id
+      Value: !Ref ServiceRegistryNameSpace
+      Export:
+        Name: NameSpaceId
+         
+    ClusterName:
+      Description: Exported ecs cluster name
+      Value: !Ref Cluster
+      Export:
+        Name: ClusterName         
+        
+    SubnetA:
+      Description: Exported subnet ids
+      Value: !Ref SubnetA
+      Export:
+        Name: SubnetA        
+    SubnetB:
+      Description: Exported subnet id
+      Value: !Ref SubnetB
+      Export:
+        Name: SubnetB        
+        
+        
+    TaskExecutionRole:
+      Description: TaskExecution role name
+      Value: !Ref ExecutionRole
+      Export:
+        Name: ECS-TaskExecutionRole                 
+        
+    TaskRole:
+      Description: TaskExecution role name
+      Value: !Ref TaskRole
+      Export:
+        Name: ECS-TaskRole                 
+        
+    ZuulSecurityGroup:
+      Description: Zuul security group name
+      Value: !Ref ZuulSecurityGroup
+      Export:
+        Name: ZuulSecurityGroup                 
+        
+    ServiceSecurityGroup:
+      Description: TaskExecution role name
+      Value: !Ref ServiceSecurityGroup
+      Export:
+        Name: ServiceSecurityGroup                         
